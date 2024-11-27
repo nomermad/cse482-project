@@ -494,7 +494,7 @@ elif option == "SVM":
     results_df['Residuals'] = results_df['Actual Ratings'] - results_df['Predicted Ratings']
 
     # Actual vs. Predicted Ratings
-    actuals = px.histogram(results_df.melt(var_name="Type", value_name="Ratings", value_vars=["Actual Ratings", "Predicted Ratings"]),x="Ratings",color="Type",title="Distribution of Actual vs. Predicted Ratings",labels=={"Ratings": "Ratings", "Type": "Rating Type"},barmode="overlay",opacity=0.75)
+    actuals = px.histogram(results_df.melt(var_name="Type", value_name="Ratings", value_vars=["Actual Ratings", "Predicted Ratings"]),x="Ratings",color="Type",title="Distribution of Actual vs. Predicted Ratings",labels={"Ratings": "Ratings", "Type": "Rating Type"},barmode="overlay",opacity=0.75)
     
 
     # Histogram for residuals
