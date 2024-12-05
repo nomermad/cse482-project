@@ -5,6 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.impute import KNNImputer
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import SMOTE
 import plotly.express as px
 from scipy.stats import zscore
@@ -445,80 +446,97 @@ elif option == "Linear Regression":
     st.plotly_chart(fig5)
 
 elif option == "SVM":
-    
-    #df = pd.concat(df, ignore_index=True)
-    df_sampled = df.sample(frac=0.001, random_state=1)
+    # Sample data
+    df_sampled = df.sample(frac=0.01, random_state=1)
+    # Extract and process release year
     df_sampled['release_year'] = df_sampled['title'].str.extract(r'\((\d{4})\)', expand=False)
     df_sampled['release_year'] = pd.to_numeric(df_sampled['release_year'], errors='coerce')
     df_sampled['release_year'] = df_sampled['release_year'].fillna(df_sampled['release_year'].median())
-
-    # Split 'genres' into lists and create one-hot encoded columns for the top genres
+ 
+    # Process genres
     df_sampled['genres'] = df_sampled['genres'].str.split('|')
     genres_exploded = df_sampled['genres'].explode()
     top_genres = genres_exploded.value_counts().nlargest(20).index.tolist()
     for genre in top_genres:
         df_sampled[f'genre_{genre}'] = df_sampled['genres'].apply(lambda x: int(genre in x))
-
-    # Define features and target variable
+ 
+    # Define features and target
     feature_columns = ['release_year'] + [f'genre_{genre}' for genre in top_genres]
     X = df_sampled[feature_columns].copy()
     y = df_sampled['rating'].copy()
-
-    # Perform encoding for `userId` and `movieId`
-    X_encoded = pd.get_dummies(df_sampled[['userId', 'movieId']], drop_first=True)
-
-    # Concatenate the encoded IDs
-    X = pd.concat([X_encoded, X], axis=1)
-
-    # Scaling
+ 
+    # Label encode IDs instead of one-hot encoding
+    le_user = LabelEncoder()
+    le_movie = LabelEncoder()
+    X['userId'] = le_user.fit_transform(df_sampled['userId'])
+    X['movieId'] = le_movie.fit_transform(df_sampled['movieId'])
+ 
+    # Scale features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-
-    # Split the data into training and testing sets
+ 
+    # Split data
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-
+ 
+    # Grid search for hyperparameters
     svr = SVR()
-    param_grid = {'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],'C': [0.1, 1, 10, 50, 100],'epsilon': [0.01, 0.1, 1, 5, 10]
+    param_grid = {
+        'kernel': ['linear', 'rbf'],
+        'C': [0.1, 1, 10],
+        'epsilon': [0.01, 0.1, 1]
     }
-
+ 
     grid_search = GridSearchCV(svr, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
     grid_search.fit(X_train, y_train)
-
-    # Best Parameters
+ 
+    # Train model with best parameters
     best_params = grid_search.best_params_
-    best_params
-
-    # Fit model
-    best_svr = SVR(C=.1, epsilon=.1, kernel='rbf')
+    best_svr = SVR(**best_params)
     best_svr.fit(X_train, y_train)
-
-    # Predict on test 
+ 
+    # Make predictions
     y_pred = best_svr.predict(X_test)
-
-    # Calculate results
+ 
+    # Calculate metrics
     mse = mean_squared_error(y_test, y_pred)
     rmse = np.sqrt(mse)
     mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
-
+ 
     # Display results
+    st.write("Best Parameters:", best_params)
     st.write("MSE:", mse)
     st.write("RMSE:", rmse)
     st.write("MAE:", mae)
     st.write("R^2:", r2)
-
-    results_df = pd.DataFrame({'Actual Ratings': y_test,'Predicted Ratings': y_pred})
-
-    # Calculate residuals
+ 
+    # Create results dataframe
+    results_df = pd.DataFrame({
+        'Actual Ratings': y_test,
+        'Predicted Ratings': y_pred
+    })
     results_df['Residuals'] = results_df['Actual Ratings'] - results_df['Predicted Ratings']
-
-    # Actual vs. Predicted Ratings
-    actuals = px.histogram(results_df.melt(var_name="Type", value_name="Ratings", value_vars=["Actual Ratings", "Predicted Ratings"]),x="Ratings",color="Type",title="Distribution of Actual vs. Predicted Ratings",labels={"Ratings": "Ratings", "Type": "Rating Type"},barmode="overlay",opacity=0.75)
+ 
+    # Plot distributions
+    actuals = px.histogram(
+        results_df.melt(var_name="Type", value_name="Ratings", 
+                       value_vars=["Actual Ratings", "Predicted Ratings"]),
+        x="Ratings",
+        color="Type",
+        title="Distribution of Actual vs. Predicted Ratings",
+        labels={"Ratings": "Ratings", "Type": "Rating Type"},
+        barmode="overlay",
+        opacity=0.75
+    )
     st.plotly_chart(actuals)
-    
-
-    # Histogram for residuals
-    residuals = px.histogram(results_df,x="Residuals",title="Distribution of Residuals",labels={"Residuals": "Residuals"},nbins=30)
+ 
+    residuals = px.histogram(
+        results_df,
+        x="Residuals",
+        title="Distribution of Residuals",
+        labels={"Residuals": "Residuals"},
+        nbins=30
+    )
     st.plotly_chart(residuals)
 
 if option == "Predictions": 
