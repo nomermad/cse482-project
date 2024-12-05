@@ -46,16 +46,11 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from surprise import Dataset, Reader, KNNBasic
-from surprise.model_selection import train_test_split
-from surprise import accuracy
 
 st.title("Movies")
 st.write('Welcome to my Streamlit app!')
 
-import zipfile
 import zipfile
 import pandas as pd
 
