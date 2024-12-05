@@ -14,6 +14,9 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer, SimpleImputer
 from sklearn.preprocessing import StandardScaler, RobustScaler
 import plotly.figure_factory as ff
+
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 import zipfile
 import pandas as pd
 from sklearn.svm import SVR
@@ -604,29 +607,37 @@ if option == "Predictions":
     if __name__ == "__main__":
         main()
 
-    from surprise import Dataset, Reader
-    from surprise.model_selection import train_test_split
 
 
-    st.title("Recommender System Web App") 
-    user_id = st.sidebar.text_input("Enter User ID", value="1") 
-    user_id = int(user_id) 
-    user_ratings = df[df['userId'] == user_id] 
-    st.subheader(f"Movies Rated by User {user_id}") 
-    st.dataframe(user_ratings) 
+
+    st.title("Recommender System Web App")
+
+# Sample data loading (replace with your data loading logic)
+# Assuming df has columns: 'userId', 'movieId', 'title', 'rating'
+# Example dataframe structure:
+# df = pd.read_csv('your_movie_ratings.csv')
+
+# Sidebar input for user ID
+    user_id = st.sidebar.text_input("Enter User ID", value="1")
+    user_id = int(user_id)
+    user_ratings = df[df['userId'] == user_id]
+    st.subheader(f"Movies Rated by User {user_id}")
+    st.dataframe(user_ratings)
+
+
     st.sidebar.header("Input Preferences")
     user_input = st.sidebar.text_input("Enter a movie title or genre:", value="")
 
-    reader = Reader(rating_scale=(0.5, 5.0))
-    data = Dataset.load_from_df(df[['userId', 'movieId', 'rating']], reader)
+# Generate TF-IDF matrix for the 'title' column
+    tfidf = TfidfVectorizer(stop_words='english')
+    df['title'] = df['title'].fillna('')
+    tfidf_matrix = tfidf.fit_transform(df['title'])
 
-    trainset, testset = train_test_split(data, test_size=0.2)
+# Compute cosine similarity between movies
+    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
 
+# Function to get recommendations
     def get_recommendations(input_value, k=5):
-        sim_options = {'name': 'cosine', 'user_based': False}  # Item-based CF
-        algo = KNNBasic(k=k, sim_options=sim_options)
-        algo.fit(trainset)
-
         if input_value:
             matching_movies = df[df['title'].str.contains(input_value, case=False, na=False)]
             if matching_movies.empty:
@@ -636,29 +647,25 @@ if option == "Predictions":
             st.subheader(f"Movies matching '{input_value}':")
             st.dataframe(matching_movies[['movieId', 'title']].head(5))
 
-            movie_id = matching_movies.iloc[0]['movieId']
-            all_movie_ids = df['movieId'].unique()
-            recommendations = []
-            for mid in all_movie_ids:
-                if mid != movie_id:
-                    pred = algo.predict(1, mid)  # User ID set to 1 (dummy)
-                    recommendations.append((mid, pred.est))
+            movie_idx = matching_movies.index[0]
+            sim_scores = list(enumerate(cosine_sim[movie_idx]))
+            sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+            sim_scores = sim_scores[1:k + 1]
 
-            recommendations.sort(key=lambda x: x[1], reverse=True)
-            return recommendations[:5]
+            recommendations = [(df.iloc[i[0]]['movieId'], i[1]) for i in sim_scores]
+            return recommendations
         else:
             st.warning("Please enter a movie title or genre.")
             return []
 
+# Button to trigger recommendations
     if st.sidebar.button("Get Recommendations"):
         recommendations = get_recommendations(user_input)
         if recommendations:
             st.subheader("Top Movie Recommendations:")
-            for movie_id, rating in recommendations:
+            for movie_id, similarity in recommendations:
                 movie_title = df[df['movieId'] == movie_id]['title'].values[0]
-                st.write(f"{movie_title} - Predicted Rating: {rating:.2f}")
-
-
+                st.write(f"{movie_title} - Similarity Score: {similarity:.2f}")
 
 
 
