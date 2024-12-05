@@ -4,4 +4,5 @@ plotly
 seaborn
 pandas
 category_encoders
+scikit-surprise
 
