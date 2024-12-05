@@ -16,8 +16,10 @@ from sklearn.preprocessing import StandardScaler, RobustScaler
 import plotly.figure_factory as ff
 import zipfile
 import pandas as pd
+from sklearn.svm import SVR
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import (mean_squared_error,mean_absolute_error,r2_score,root_mean_squared_error)  # Custom metric for RMSE
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import KNeighborsRegressor
@@ -43,13 +45,21 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from surprise import Dataset, Reader, KNNBasic
+from surprise.model_selection import train_test_split
+from surprise import accuracy
 
-st.title("Music")
+st.title("Movies")
 st.write('Welcome to my Streamlit app!')
 
 import zipfile
 import zipfile
 import pandas as pd
+
+import hashlib
+import json
+import streamlit as st
+
 
 def load_data():
     zip_file_path = 'example.csv.zip'  # Path to the ZIP archive
@@ -88,7 +98,7 @@ import plotly.graph_objects as go
 
 # Sidebar navigation
 st.sidebar.title("Navigation")
-option = st.sidebar.selectbox("Choose a section", ["KNN & Random Forest", "Linear Regression", 'SVM'])
+option = st.sidebar.selectbox("Choose a section", ["KNN & Random Forest", "Linear Regression", 'SVM', 'Predictions'])
 
 if option == "KNN & Random Forest":
     st.title("Movie Rating Prediction with Random Forest and KNN")
@@ -438,7 +448,7 @@ elif option == "Linear Regression":
 
 elif option == "SVM":
     
-    df = pd.concat(df, ignore_index=True)
+    #df = pd.concat(df, ignore_index=True)
     df_sampled = df.sample(frac=0.001, random_state=1)
     df_sampled['release_year'] = df_sampled['title'].str.extract(r'\((\d{4})\)', expand=False)
     df_sampled['release_year'] = pd.to_numeric(df_sampled['release_year'], errors='coerce')
@@ -469,6 +479,17 @@ elif option == "SVM":
     # Split the data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
+    svr = SVR()
+    param_grid = {'kernel': ['linear', 'poly', 'rbf', 'sigmoid'],'C': [0.1, 1, 10, 50, 100],'epsilon': [0.01, 0.1, 1, 5, 10]
+    }
+
+    grid_search = GridSearchCV(svr, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
+    grid_search.fit(X_train, y_train)
+
+    # Best Parameters
+    best_params = grid_search.best_params_
+    best_params
+
     # Fit model
     best_svr = SVR(C=.1, epsilon=.1, kernel='rbf')
     best_svr.fit(X_train, y_train)
@@ -495,13 +516,155 @@ elif option == "SVM":
 
     # Actual vs. Predicted Ratings
     actuals = px.histogram(results_df.melt(var_name="Type", value_name="Ratings", value_vars=["Actual Ratings", "Predicted Ratings"]),x="Ratings",color="Type",title="Distribution of Actual vs. Predicted Ratings",labels={"Ratings": "Ratings", "Type": "Rating Type"},barmode="overlay",opacity=0.75)
+    st.plotly_chart(actuals)
     
 
     # Histogram for residuals
     residuals = px.histogram(results_df,x="Residuals",title="Distribution of Residuals",labels={"Residuals": "Residuals"},nbins=30)
     st.plotly_chart(residuals)
 
+if option == "Predictions": 
+    import hashlib
+    import json
+    import streamlit as st
+
+    CREDENTIALS_FILE = "Users.json"
+
+    def hash_password(password):
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    # Load and save credentials
+    def load_credentials():
+        try:
+            with open(CREDENTIALS_FILE, "r") as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Handle the case where the file is not found or the JSON is invalid
+            st.warning("Credentials file is missing or corrupted. Initializing a new one.")
+            return {}
+
+    def save_credentials(credentials):
+        with open(CREDENTIALS_FILE, "w") as file:
+            json.dump(credentials, file)
+
+    # Login functionality
+    def login():
+        st.subheader("Log In")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Log In"):
+            credentials = load_credentials()
+            hashed_password = hash_password(password)
+
+            if username in credentials and credentials[username] == hashed_password:
+                st.success(f"Welcome, {username}!")
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+            else:
+                st.error("Invalid username or password.")
+
+    # Sign-up functionality
+    def signup():
+        st.subheader("Sign Up")
+        username = st.text_input("Choose a Username")
+        password = st.text_input("Choose a Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
+
+        if st.button("Sign Up"):
+            if password != confirm_password:
+                st.error("Passwords do not match.")
+            else:
+                credentials = load_credentials()
+                if username in credentials:
+                    st.error("Username already exists.")
+                else:
+                    credentials[username] = hash_password(password)
+                    save_credentials(credentials)
+                    st.success("Sign up successful! You can now log in.")
+
+    def main():
+        st.title("User Authentication")
+
+        if "logged_in" not in st.session_state:
+            st.session_state["logged_in"] = False
+
+        if st.session_state["logged_in"]:
+            st.success(f"Logged in as {st.session_state['username']}")
+            if st.button("Log Out"):
+                st.session_state["logged_in"] = False
+        else:
+            option = st.sidebar.selectbox("Choose an option", ["Log In", "Sign Up"])
+
+            if option == "Log In":
+                login()
+            elif option == "Sign Up":
+                signup()
+
+    if __name__ == "__main__":
+        main()
+
+    from surprise import Dataset, Reader
+    from surprise.model_selection import train_test_split
+
+
+    st.title("Recommender System Web App") 
+    user_id = st.sidebar.text_input("Enter User ID", value="1") 
+    user_id = int(user_id) 
+    user_ratings = df[df['userId'] == user_id] 
+    st.subheader(f"Movies Rated by User {user_id}") 
+    st.dataframe(user_ratings) 
+    st.sidebar.header("Input Preferences")
+    user_input = st.sidebar.text_input("Enter a movie title or genre:", value="")
+
+    reader = Reader(rating_scale=(0.5, 5.0))
+    data = Dataset.load_from_df(df[['userId', 'movieId', 'rating']], reader)
+
+    trainset, testset = train_test_split(data, test_size=0.2)
+
+    def get_recommendations(input_value, k=5):
+        sim_options = {'name': 'cosine', 'user_based': False}  # Item-based CF
+        algo = KNNBasic(k=k, sim_options=sim_options)
+        algo.fit(trainset)
+
+        if input_value:
+            matching_movies = df[df['title'].str.contains(input_value, case=False, na=False)]
+            if matching_movies.empty:
+                st.warning("No movies found matching your input.")
+                return []
+
+            st.subheader(f"Movies matching '{input_value}':")
+            st.dataframe(matching_movies[['movieId', 'title']].head(5))
+
+            movie_id = matching_movies.iloc[0]['movieId']
+            all_movie_ids = df['movieId'].unique()
+            recommendations = []
+            for mid in all_movie_ids:
+                if mid != movie_id:
+                    pred = algo.predict(1, mid)  # User ID set to 1 (dummy)
+                    recommendations.append((mid, pred.est))
+
+            recommendations.sort(key=lambda x: x[1], reverse=True)
+            return recommendations[:5]
+        else:
+            st.warning("Please enter a movie title or genre.")
+            return []
+
+    if st.sidebar.button("Get Recommendations"):
+        recommendations = get_recommendations(user_input)
+        if recommendations:
+            st.subheader("Top Movie Recommendations:")
+            for movie_id, rating in recommendations:
+                movie_title = df[df['movieId'] == movie_id]['title'].values[0]
+                st.write(f"{movie_title} - Predicted Rating: {rating:.2f}")
+
+
+
+
+
 
 
     
+
+
 
